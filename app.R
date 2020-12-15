@@ -12,7 +12,8 @@ data$date <- as.Date(data$date)
 Sys.setlocale("LC_TIME", "English")
 before <- data %>% filter(date <= '2020-06-30') #historical data
 after <- data %>% filter(date >= '2020-07-01') #validation_data
-
+Baseline_SP500 <- read.csv('IVE.csv')
+Baseline_SP500$date <- as.Date(Baseline_SP500$date)
 # UI 
 header <- dashboardHeader(title = "Investment Helper")
 sider <- dashboardSidebar(
@@ -100,19 +101,38 @@ body <- dashboardBody(
                     box(
                         title = "Maximize SharpeRatio", width = 4, background = "light-blue",
                         "How to decide portfolio weights?"
-                    )#,
+                    )
+                ),
+                
+                
+                fluidRow(
+                    box(width = 3, status = "warning",title = 'Zoom',
+                        numericInput("qr1", NULL, 0.1, min = 0, max = 1,step = 0.05)
+                    ),
                     
-                    #h5("Performance Analysis")
+                    box(width = 3, status = "warning",title = 'BioNTech',
+                        numericInput("qr2", NULL, 0.2, min = 0, max = 1,step = 0.05)
+                    ),
                     
+                    box(width = 3, status = "warning",title = 'Modrna',
+                        numericInput("qr3", NULL, 0.6, min = 0, max = 1,step = 0.05)
+                    ),
+                    
+                    box(width = 3, status = "warning",title = 'NVDA',
+                        numericInput("qr4", NULL, 0.1, min = 0, max = 1,step = 0.05)
+                    )
                 ),
                 
                 fluidRow(
+                    column(width = 6,
+                        plotOutput('qplot1')
+                    ),
                     
-                    
-                    h5("Performance Analysis")
-                    
+                    column(width = 6,
+                        plotOutput('qplot2')
+                    )
                 )
-
+                
         ),
         
         # 3rd subtab 2 content
@@ -124,17 +144,52 @@ body <- dashboardBody(
                     ),
                     
                     box(
-                        title = "CAPM Model", width = 4, background = "light-blue",
+                        title = "Manual", width = 4, background = "light-blue",
                         "How to choose the stocks?"
                     ),
                     
                     box(
-                        title = "Maximize SharpeRatio", width = 4, background = "light-blue",
+                        title = "Manual", width = 4, background = "light-blue",
                         "How to decide portfolio weights?"
+                    )
+                ),
+                
+                fluidRow(
+                    box(width = 3, status = "warning",
+                        selectInput('manual_one','Stock 1:',choices = data$symbol,
+                                    selected = 'AMZN',multiple = TRUE),
+                        numericInput("mr1", NULL, 0.2, min = 0, max = 1,step = 0.05)
                     ),
-                    h2("Widgets tab content")
                     
+                    box(width = 3, status = "warning",
+                        selectizeInput('manual_two','Stock 2:',choices = data$symbol,
+                                       selected = 'ZM',multiple = TRUE),
+                        numericInput("mr2", NULL, 0.2, min = 0, max = 1,step = 0.05)
+                    ),
+                    
+                    box(width = 3, status = "warning",
+                        selectInput('manual_three','Stock 3:',choices = data$symbol,
+                                    selected = 'PFE',multiple = TRUE),
+                        numericInput("mr3", NULL, 0.3, min = 0, max = 1,step = 0.05)
+                    ),
+                    
+                    box(width = 3, status = "warning",
+                        selectInput('manual_four','Stock 4:',choices = data$symbol,
+                                    selected = 'BNTX',multiple = TRUE),
+                        numericInput("mr4", NULL, 0.3, min = 0, max = 1,step = 0.05)
+                    )
+                ),
+                
+                fluidRow(
+                    column(width = 6,
+                           plotOutput('mplot1')
+                    ),
+                    column(width = 6,
+                           plotOutput('mplot2')
+                    )
                 )
+                
+                
         ),
         
         # 4th tab content
@@ -204,6 +259,99 @@ server <- function(input, output) {
             theme_tq() + scale_color_tq() 
     })
     output$plot3 = renderPlot(plot_three())
+    
+    initial_position <- 250000 
+    invest_choice_1 <- c('ZM','BNTX','MRNA','NVDA')
+    returns_monthly_1 <- after %>%
+        filter(symbol %in% invest_choice_1) %>%
+        group_by(symbol) %>%
+        tq_transmute(select     = adjusted, 
+                     mutate_fun = periodReturn, 
+                     period     = "monthly", 
+                     col_rename = "monthly.return")
+    
+    qplot_one = reactive({
+        p_quant_each <- returns_monthly_1 %>% 
+            ggplot(aes(x = date, y = monthly.return, color = symbol)) + 
+            geom_line() +
+            theme_tq() + scale_color_tq() +
+            labs(title = "Performance of Each Stock Invested",x = "Date",y="Monthly Return Rate")
+        ggpubr::ggarrange(p_quant_each,ncol = 1)
+    })
+    output$qplot1 = renderPlot(qplot_one())
+    
+    qplot_two = reactive({
+        weight_1 <- c(input$qr1,input$qr4,input$qr2,input$qr3)
+        growth_monthly_1 <- returns_monthly_1 %>%
+            tq_portfolio(assets_col   = symbol, 
+                         returns_col  = monthly.return, 
+                         weights      = weight_1, 
+                         col_rename   = "investment.growth",
+                         wealth.index = TRUE) %>%
+            mutate(investment.growth = investment.growth * initial_position)
+        p_quant_total <- growth_monthly_1 %>%
+            ggplot(aes(x = date, y = investment.growth/1000)) +
+            geom_line(size = 1, color = 'steelblue') +
+            labs(title = "Performance of Portfolio",
+                 subtitle = "10% ZOOM, 10% NVDA, 20% BNTX, 60% Moderna",
+                 x = "Time", y = "Portfolio Value / (thousand $)") +
+            ylim(250, 600) +
+            theme_tq() + scale_color_tq()# +
+        ggpubr::ggarrange(p_quant_total,ncol = 1)
+    })
+    output$qplot2 = renderPlot(qplot_two())
+    
+    mplot_one = reactive({
+        invest_choice_2 <- c(input$manual_one,input$manual_two,
+                             input$manual_three,input$manual_four)
+        returns_monthly_2 <- after %>%
+            filter(symbol %in% invest_choice_2) %>%
+            group_by(symbol) %>%
+            tq_transmute(select     = adjusted, 
+                         mutate_fun = periodReturn, 
+                         period     = "monthly", 
+                         col_rename = "monthly.return")
+        
+        p_manual_each <- returns_monthly_2 %>% 
+            ggplot(aes(x = date, y = monthly.return, color = symbol)) + 
+            geom_line() +
+            theme_tq() + scale_color_tq() +
+            labs(title = "Performance of each stock invested",
+                 x = "Date",y="Monthly Return Rate")
+        ggpubr::ggarrange(p_manual_each,ncol = 1)
+    })
+    output$mplot1 = renderPlot(mplot_one())
+    
+    mplot_two = reactive({
+        invest_choice_22 <- c(input$manual_one,input$manual_two,
+                             input$manual_three,input$manual_four)
+        returns_monthly_22 <- after %>%
+            filter(symbol %in% invest_choice_22) %>%
+            group_by(symbol) %>%
+            tq_transmute(select     = adjusted, 
+                         mutate_fun = periodReturn, 
+                         period     = "monthly", 
+                         col_rename = "monthly.return")
+        
+        weight_2 <- c(input$mr1,input$mr2,input$mr3,input$mr4)
+        growth_monthly_2 <- returns_monthly_22 %>%
+            tq_portfolio(assets_col   = symbol, 
+                         returns_col  = monthly.return, 
+                         weights      = weight_2, 
+                         col_rename   = "investment.growth",
+                         wealth.index = TRUE) %>%
+            mutate(investment.growth = investment.growth * initial_position)
+        
+        p_manual_total <- growth_monthly_2 %>%
+            ggplot(aes(x = date, y = investment.growth/1000)) +
+            geom_line(size = 1, color = 'steelblue') +
+            labs(title = "Performance of Manual Portfolio",
+                 x = "Time", y = "Portfolio Value / Thousand $") +
+            ylim(250, 600) +
+            theme_tq() + scale_color_tq()
+        ggpubr::ggarrange(p_manual_total,ncol = 1)
+    })
+    output$mplot2 = renderPlot(mplot_two())
     
     output$table <- DT::renderDataTable({
         table_data <- data %>% filter(symbol %in% input$table_symbol)

@@ -125,236 +125,26 @@ As mentioned before, based on the professional opinions and suggestions, I selec
 
 When managing the portfolio, it is recommended to put all eggs in one basket, which means that invest in only one stock. Also, it is too tired to purchase too many stocks as a beginner in the stock market. Therefore, considering the risk and convenience, we decided to select four stocks from the total 11 stocks. 
 
+I think there are two steps for making a portfolio investment plan:
+the first step is to decide the 4 stocks to invest; the second step is to determine the proportion of money for each stock.
+
 ### Method 1. Quantitative Trading: 
 
 ### CAPM Alpha Ranking & Mean-Variance Portfolio Optimaization
 
-The implementation of the strategy demonstrates that stocks beat the market last month are likely to beat the market again in the subsequent month. This algorithm performs well when the market is smooth. However when the market volatility increases the model fails to capture alpha and it performs poorly. What we learn from this is that market fluctuations decrease the significance level of the linear regression coefficients, especially when we are using daily returns to fit the model.
+Quantitative Trading means we will use the quantitative models to help us select the stocks and determine the way of combination.
 
-Alpha shows how well (or badly) a stock has performed in comparison to a benchmark index. Beta indicates how volatile a stock's price has been in comparison to the market as a whole. A high alpha is always good. A high beta may be preferred by an investor in growth stocks but shunned by investors who seek steady returns and lower risk.
+Considering the upward trend of the stocks at the end of June 2020, I chose the CAMP alpha ranking model to help me choose the 4 stocks. This strategy performs well when the market is smooth. However when the market volatility increases the model fails to capture alpha and it performs poorly. Alpha shows how well a stock has performed in comparison to the SP500 index. Beta indicates how volatile a stock's price has been in comparison to the market as a whole. A high alpha is always good. A high beta may be preferred by an investor in growth stocks but shunned by investors who seek steady returns and lower risk.
 
-Now with the expected excess returns and the covariance matrix ready, we can conduct the Mean-Variance Portfolio Optimization to get the optimal allocation (weight) of each stock so that the Sharpe Ratio of the portfolio is maximized.
+With CAMP alpha ranking strategy, I calculated the alpha and beta for each stock according to the historical prices ranging from 2020/04/01 to 2020/07/01. I chose this period because we can notice that the stock market has been gradually recovered since April, 2020. Then I ranked the stocks according to the values of alpha and chose the 4 stocks with the highest alpha value.
 
-Here we will use Guy Yollin’s “effFrontier” and “maxSharpe” functions3, which use the core function of “portfolio.optim” in the “tseries” R package, for the calculations of efficient frontier and maximum Sharpe Ratio.
-
-### Method 2. Mannual Trading
-
-In the certain context, manual trading means selecting and designing the combination of different stocks based on personal knowledge of these companies and personal experience of stock market volatility patterns. I think that is why many people say that trading is art, not science. 
-
-# Performance Analysis
-
-The SP500 returns are used as the market return.
-
-
-
-```{r,echo=FALSE}
-#combination: 30% ZOOM, 20% AMZN, 20% PFE, 30% Moderna  
-# Calculate Monthly Return Rate
-invest_choice <- c('ZM','AMZN','PFE','MRNA')
-returns_monthly_2 <- after %>%
-    filter(symbol %in% invest_choice) %>%
-    group_by(symbol) %>%
-    tq_transmute(select     = adjusted, 
-                 mutate_fun = periodReturn, 
-                 period     = "monthly", 
-                 col_rename = "monthly.return")
-
-initial_position <- 250000 
-wts <- c(0.2,0.3,0.2,0.3)
-growth_monthly_2 <- returns_monthly_2 %>%
-    tq_portfolio(assets_col   = symbol, 
-                 returns_col  = monthly.return, 
-                 weights      = wts, 
-                 col_rename   = "investment.growth",
-                 wealth.index = TRUE) %>%
-    mutate(investment.growth = investment.growth * initial_position)
-```
-
-```{r,echo=FALSE}
-p_manual_each <- returns_monthly_2 %>% 
-    ggplot(aes(x = date, y = monthly.return, color = symbol)) + 
-    geom_line() +
-    theme_tq() + scale_color_tq() +
-    labs(title = "Movement of Monthly Return Rate",
-         subtitle = "From J2020-07-01 to 2020-12-01",
-         x = "Date",y="Monthly Return Rate")
-
-p_manual_total <- growth_monthly_2 %>%
-    ggplot(aes(x = date, y = investment.growth)) +
-    geom_line(size = 2, color = palette_light()[[5]]) +
-    labs(title = "Investment Portfolio Performance",
-         subtitle = "30% ZOOM,  30% AMZN, 20% PFE, 20% Moderna",
-         x = "Time", y = "Portfolio Value") +
-    #geom_smooth(method = "loess") +
-    theme_tq() + scale_color_tq() +
-    scale_y_continuous(labels = scales::dollar)
-```
-
-```{r,eval=FALSE}
-grid.arrange(p_quant_total, p_manual_total,p_quant_each, p_manual_each,ncol = 2)
-```
-
-```{r,eval=FALSE}
-Ra_2 <- after %>% 
-    filter(symbol %in% invest_choice) %>%
-    group_by(symbol) %>%
-    tq_transmute(select = adjusted, 
-               mutate_fun = periodReturn, 
-               period     = "monthly", 
-               col_rename = "Ra")
-
-Rb_2 <- Baseline_2 %>%
-    filter(date >= '2020-07-01' & date <= '2020-12-01') %>%
-    tq_transmute(select     = adjusted, 
-                 mutate_fun = periodReturn, 
-                 period     = "monthly", 
-                 col_rename = "Rb")
-
-RaRb_2 <- left_join(Ra, Rb, by = c("date" = "date"))
-
-RaRb_capm_2 <- RaRb_2 %>%
-    tq_performance(Ra = Ra, 
-                   Rb = Rb, 
-                   performance_fun = table.CAPM)
-
-RaRb_capm_2 %>% 
-    select(symbol, Alpha, Beta) %>% 
-    kable() %>%
-    kable_classic(full_width = F, html_font = "Cambria") %>%
-    footnote(general = "The Alpha and Beta for manual trading portfolio.",
-           general_title = "Table 1: ")
-```
-
-
-# Shiny Application Website
-
-[ShinyApp]()
-
-# Future Work
-
-# Reference
-
-
-
-\newpage
-
-# Appendix
-
-All the code and output:
-
-1. import the data
-
-```{r,eval=FALSE}
-stock_choice <- c('FB','AAPL','GOOG','AMZN','NFLX',
-                  'ZM','AMD','NVDA','PFE','BNTX','MRNA')
-data <- tq_get(stock_choice, get = 'stock.prices',
-               from = '2019-01-01',to = "2020-12-01")
-#data$symbol %>% unique()
-```
-
-```{r}
-# Change into English
-Sys.setlocale("LC_TIME", "English")
-```
-
-2. separate the data
-```{r}
-#historical data
-before <- data %>% filter(date <= '2020-06-30')
-#validation_data
-after <- data %>% filter(date >= '2020-07-01')
-```
-
-3. For convience, we save the data for shiny app. 
-```{r,eval = FALSE}
-write.csv(data,'all_stock_data.csv')
-write.csv(NASDAQ_data,'NASDAQ.csv')
-write.csv(SP500_data,'SP500.CSV')
-# use as.Date to transform the 'date' column when import the data from csv
-#show <- read.csv('FB_Stock_Price.csv')
-#show$date <- as.Date(show$date)
-```
-
-4. EDA
-```{r,eval=FALSE}
-p1 <- before %>% filter(symbol %in% c('GOOG','ZM','BNTX','MRNA')) %>%
-    ggplot(aes(x = date, y = adjusted, color = symbol)) + 
-    geom_line()+
-    facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
-    theme_tq() + scale_color_tq() +
-    labs(title = "Line Chart")
-```
-
-```{r,eval=FALSE}
-#end <- ymd('2020/11/30')
-p2 <- before %>% filter(symbol %in% c('GOOG','ZM','BNTX','MRNA')) %>%
-    ggplot(aes(x = date, y = close)) +
-    geom_candlestick(aes(open = open, high = high, low = low, close = close),
-                   colour_up = "darkblue",colour_down = "red",
-                   fill_up = "darkblue",fill_down = "red") +
-    facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
-    labs(title = "Candlestic Chart", y = "Closing Price", x = "Time") + 
-    #coord_x_date(xlim = c(end - weeks(6), end)) + 
-    theme_tq() + scale_color_tq()
-```
-
-```{r,eval=FALSE}
-p3 <- before %>% filter(symbol %in% c('GOOG','ZM','BNTX','MRNA')) %>%
-    ggplot(aes(x = date, y = volume/1000000, fill = volume/1000000)) +
-    geom_bar(stat = "identity") + 
-     facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
-    labs(title = "Bar Chart of Trading Volume", 
-         y = "Volume / (million)", x = "Time") + 
-    scale_fill_gradient(low = "red", high = "darkblue") +
-    theme(legend.title =  "volume / (million)") +
-    theme_tq() + scale_color_tq()
-```
-
-
-5. Forecasting
-
-
-6.Portfolio Management
-```{r,eval = FALSE}
-# try another invest rate combination: 30% MSFT, 40% BIDU, 30% NTES
-initial_position <- 250000 
-wts <- c(0.3,0.4,0.3)
-portfolio_growth_monthly_3 <- stock_returns_monthly %>%
-    tq_portfolio(assets_col   = symbol, 
-                 returns_col  = monthly.return, 
-                 weights      = wts, 
-                 col_rename   = "investment.growth",
-                 wealth.index = TRUE) %>%
-    mutate(investment.growth = investment.growth * initial_position)
-portfolio_growth_monthly_3 %>%
-    ggplot(aes(x = date, y = investment.growth)) +
-    geom_line(size = 2, color = palette_light()[[5]]) +
-    labs(title = "Portfolio Performance 1",
-         subtitle = "30% MSFT,40% BIDU,30% NTES",
-         x = "", y = "Portfolio Value") +
-    geom_smooth(method = "loess") +
-    theme_tq() +
-    scale_color_tq() +
-    scale_y_continuous(labels = scales::dollar)
-```
-
-7. Performance Analysis
-```{r,eval = FALSE}
-library(kableExtra)
-Baseline_1 <- "XLK" %>%
-    tq_get(get  = "stock.prices",
-           from = '2020-01-01',to = "2020-12-01") 
-
-Baseline_2 <- 'IVE' %>%
-    tq_get(get  = "stock.prices",
-           from = '2020-01-01',to = "2020-12-01")
-
-write.csv(Baseline_1,'XLK.csv')
-write.csv(Baseline_2,'IVE.csv')
-```
-
-```{r,eval = FALSE}
+```{r,echo = FALSE}
 # CAPM Alpha Ranking Model
+Baseline_XLK <- read.csv('XLK.csv')
+Baseline_XLK$date <- as.Date(Baseline_XLK$date)
+Baseline_SP500 <- read.csv('IVE.csv')
+Baseline_SP500$date <- as.Date(Baseline_SP500$date)
+
 Ra <- data %>% 
     filter(date >= '2020-04-01' & date <='2020-07-01') %>%
     group_by(symbol) %>%
@@ -363,7 +153,7 @@ Ra <- data %>%
                period     = "monthly", 
                col_rename = "Ra")
 
-Rb <- Baseline_2 %>%
+Rb <- Baseline_SP500 %>%
     filter(date >= '2020-04-01' & date <= '2020-07-01') %>%
     tq_transmute(select     = adjusted, 
                  mutate_fun = periodReturn, 
@@ -377,11 +167,169 @@ RaRb_capm <- RaRb %>%
                    Rb = Rb, 
                    performance_fun = table.CAPM)
 
-good <- RaRb_capm[rev(order(RaRb_capm$Alpha))[1:11],]
+good <- RaRb_capm[rev(order(RaRb_capm$Alpha))[1:4],]
 good[,c(1,3,5)] %>%
     kable() %>%
     kable_classic(full_width = F, html_font = "Cambria") %>%
-    footnote(general = "The table.",
+    footnote(general = "The four stocks with highest Alpha value",
            general_title = "Table 1: ")
 ```
 
+After decided the stocks we were going to invest, we need the Mean-Variance Portfolio Optimization strategy to help us decide the weight of each stock. With the expected excess returns and the covariance matrix of each stock, I conducted the Mean-Variance Portfolio Optimization to get the optimal weight of each stock so that the Sharpe Ratio of the portfolio is maximized.
+
+$$Portfolio\_plan1 \sim 10\%*Zoom + 20\%*BioNTech + 10\%*NVIDIA + 60\%*Moderna.$$  
+
+### Method 2. Mannual Trading
+
+In the certain context, manual trading means selecting and designing the combination of different stocks based on personal knowledge of these companies and personal experience of stock market volatility patterns. I think that is why many people say that trading is art, not science. 
+
+$$Portfolio\_plan2 \sim 30\%*Zoom + 20\%*AMZN + 20\%*PFE + 30\%*Moderna.$$  
+
+I made this portfolio plan for the following reasons:
+
+1. Zoom is more and more important during pandemic. Almost all the students and workers who can work at home need the online meeting service.
+
+2. Amazon has been a great company for many years. During the pandemic, the demand for online shopping is only increase in the future. 
+
+3. Pfizer and Moderna are both the vaccine development companies. Even though the routes of technology are different, but I am confident in both of them. What is more, if only one vaccine can succeed, this strategy can reduce the risk because it is a kind of hedge investment.
+
+# Performance Analysis
+
+In this section, we will compare the performance of different investment portfolio strategies. In additon, we use the SP500 returns as the market return. And we also compare our investment portfolios with the market performance.  
+
+### A. Portfolio Plan1 VS Portfolio Plan2 
+
+According to Figure 4, we can find that portfolio plan 1 which is calculated by CAMP is better the manual portfolio plan 2.
+
+Based on the Figure 5, we can find that both portfolio plans selected Zoom and Moderna. These two stocks are really good choice for investing during this time. However, the portfolio 1 successfully chose the BioNTech rather than PFE and this the weight of portfolio 1 is more reasonable. In general, the quantitative trading strategy here is better the manual trading. 
+
+```{r,echo=FALSE}
+# Calculate Monthly Return Rate
+invest_choice_1 <- c('ZM','BNTX','NVDA','MRNA')
+returns_monthly_1 <- after %>%
+    filter(symbol %in% invest_choice_1) %>%
+    group_by(symbol) %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "monthly.return")
+
+initial_position <- 250000 
+weight_1 <- c(0.1,0.1,0.2,0.6)
+growth_monthly_1 <- returns_monthly_1 %>%
+    tq_portfolio(assets_col   = symbol, 
+                 returns_col  = monthly.return, 
+                 weights      = weight_1, 
+                 col_rename   = "investment.growth",
+                 wealth.index = TRUE) %>%
+    mutate(investment.growth = investment.growth * initial_position)
+```
+
+```{r,echo=FALSE}
+#combination: 30% ZOOM, 20% AMZN, 20% PFE, 30% Moderna  
+# Calculate Monthly Return Rate
+invest_choice_2 <- c('ZM','AMZN','PFE','MRNA')
+returns_monthly_2 <- after %>%
+    filter(symbol %in% invest_choice_2) %>%
+    group_by(symbol) %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "monthly.return")
+
+initial_position <- 250000 
+weight_2 <- c(0.2,0.3,0.2,0.3)
+growth_monthly_2 <- returns_monthly_2 %>%
+    tq_portfolio(assets_col   = symbol, 
+                 returns_col  = monthly.return, 
+                 weights      = weight_2, 
+                 col_rename   = "investment.growth",
+                 wealth.index = TRUE) %>%
+    mutate(investment.growth = investment.growth * initial_position)
+```
+
+```{r,echo=FALSE}
+p_quant_each <- returns_monthly_1 %>% 
+    ggplot(aes(x = date, y = monthly.return, color = symbol)) + 
+    geom_line() +
+    theme_tq() + scale_color_tq() +
+    labs(title = "Quantitative Trading",x = "Date",y="Monthly Return Rate")
+
+p_manual_each <- returns_monthly_2 %>% 
+    ggplot(aes(x = date, y = monthly.return, color = symbol)) + 
+    geom_line() +
+    theme_tq() + scale_color_tq() +
+    labs(title = "Manual Trading",x = "Date",y="")
+
+p_quant_total <- growth_monthly_1 %>%
+    ggplot(aes(x = date, y = investment.growth/1000)) +
+    geom_line(size = 1, color = 'steelblue') +
+    labs(title = "Quantitative Trading",
+         subtitle = "10% ZOOM, 10% NVDA, 20% BNTX, 60% Moderna",
+         x = "Time", y = "Portfolio Value / (thousand $)") +
+    ylim(250, 600) +
+    theme_tq() + scale_color_tq()# +
+    #scale_y_continuous(labels = scales::dollar)
+
+p_manual_total <- growth_monthly_2 %>%
+    ggplot(aes(x = date, y = investment.growth/1000)) +
+    geom_line(size = 1, color = 'steelblue') +
+    labs(title = "Manual Trading",
+         subtitle = "30% ZOOM,  30% AMZN, 20% PFE, 20% Moderna",
+         x = "Time", y = "") +
+    ylim(250, 600) +
+    theme_tq() + scale_color_tq()
+```
+
+```{r,echo=FALSE,results= 'asis', fig.cap='\\label{fig:figs} The line charts above compares the trends of two portfolios.',fig.height=4,fig.width=8}
+grid.arrange(p_quant_total, p_manual_total,ncol = 2)
+```
+
+```{r,echo=FALSE,results= 'asis', fig.cap='\\label{fig:figs} The line charts above shows the trends of each stock selected by different portfolios.',fig.height=4,fig.width=8}
+grid.arrange(p_quant_each, p_manual_each,ncol = 2)
+```
+
+### A. Best Portfolio Plan VS Market Performance
+
+According to Table 2, our best investing portfolio plan 1 is better than the whole matket performance(IVE).
+```{r,echo=FALSE}
+Ra_2 <- after %>% 
+    filter(symbol %in% invest_choice_1) %>%
+    group_by(symbol) %>%
+    tq_transmute(select = adjusted, 
+               mutate_fun = periodReturn, 
+               period     = "monthly", 
+               col_rename = "Ra")
+
+Rb_2 <- Baseline_SP500 %>%
+    filter(date >= '2020-07-01' & date <= '2020-12-01') %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "Rb")
+
+RaRb_2 <- left_join(Ra_2, Rb_2, by = c("date" = "date"))
+
+RaRb_capm_2 <- RaRb_2 %>%
+    tq_performance(Ra = Ra, 
+                   Rb = Rb, 
+                   performance_fun = table.CAPM)
+
+RaRb_capm_2 %>% 
+    select(symbol, Alpha, Beta) %>% 
+    kable() %>%
+    kable_classic(full_width = F, html_font = "Cambria") %>%
+    footnote(general = "The Alpha and Beta for Best portfolio compared with market.",
+           general_title = "Table 2: ")
+```
+
+
+# Reference
+
+Matt Dancho, tidyquant: Tidy Quantitative Financial Analysis, Version:	1.0.2.
+
+Investopia.(https://www.investopedia.com/ask/answers/102714/whats-difference-between-alpha-and-beta.asp)
+
+Matt Dancho, Performance Analysis with tidyquant(https://cran.r-project.org/web/packages/tidyquant/vignettes/TQ05-performance-analysis-with-tidyquant.html)
+
+Ulland Investment Advisors(https://www.ullandinvestment.com/2020/06/)

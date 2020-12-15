@@ -1,0 +1,387 @@
+---
+title: "Portfolio Management with Tidyquant"
+author: "Fan Feng - MA615 Project3"
+date: "2020/12/13"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyquant)
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(broom)
+library(kableExtra)
+library(grid)
+library(gridExtra)
+```
+
+# Abstract
+
+As the epidemic changes, the stock market is still full of uncertainty. But through comprehensive analysis of various viewpoints, I think it is feasible to remain optimistic about the future market. To be specific, We believe that the technology companies and the medical companies are worth investing, including ZOOM, Amazon, PFE, BioNTech and so on. However, in order to maximize the return and control the total risks, we need scientific portfolio management of the stocks of our interest. 
+
+# Introduction
+
+### A. Background
+
+The COVID-19 pandemic has had a devastating effect on the economy in the United States. In early March 2020, the first lockdown began and the stock market plunged. After this initial reaction, however, the market recovered. 
+
+As the epidemic changes, the stock market is still full of uncertainty. But through comprehensive analysis of various viewpoints, I think it is feasible to remain optimistic about the future market. To be specific, We believe that the technology companies and the medical companies are worth investing, including ZOOM, Amazon, PFE, BioNTech and so on. However, in order to maximize the return and control the total risks, we need scientific portfolio management of the stocks of our interest. 
+
+What needs to be emphasized is that, in this project, we are not making real investments. Our projects are more like back testing of possible investment portfolios. Therefore, we should treat the data after July 2020 as unknown when we are managing investment portfolios. The data after July 2020 can only be used when analyzing the performance of the designed portfolio.
+
+### B. Goal
+
+In this project, we will develop a stock visualization & portfolio tracking tool with Shiny and Tidyquant. With this Shiny app, we can visualize the historical prices of stocks in various forms and forecast the future prices. In addition, based on the historical stock prices and the online investment advice that was available before 2020/07/01, we will manage the portfolio with different methods and compare the performance of each portfolio through the fall until 2020/12/01. 
+
+For this project, we assume an initial position of $250,000 in cash starting on 1 July 2020. The final transaction in the project should return the portfolio to cash on 1 December 2020. To simplify, we ignore trading costs, taxes, and any other fees. We also ignore minimum investment requirements. 
+
+\newpage
+
+### C. Data Preparation 
+
+Firstly, we downloaded the stock data from financial Yahoo using tq_get() of tidyquant package. We select 11 stocks in total of technology and medical fields as following: Facebook, Apple, Google, Amazon, NETFLEX, Zoom, AMD, NVDA, Pfizer, BioNTech and Moderna.We choose these stocks because we are optimistic about the performance of these stocks during the epidemic after comprehensively analyzing various [investment opinions](https://www.ullandinvestment.com/2020/06/). However, We will only select 3 stocks from these 11 stocks based on different methods for investment portfolio.
+
+Then we separate the data into two parts: historical data & validation data.
+We will use the historical data for visualization and making investment decisions. And the data after 2020/07/01 will be used to validate the performance of different portfolios.
+
+```{r,echo=FALSE,results='hide'}
+data <- read.csv('all_stock_data.csv')
+data$date <- as.Date(data$date)
+Sys.setlocale("LC_TIME", "English")
+before <- data %>% filter(date <= '2020-06-30')
+after <- data %>% filter(date >= '2020-07-01')
+```
+
+# Exploratory Data Analysis
+
+```{r,echo=FALSE}
+p1 <- before %>% filter(symbol %in% c('AMZN','ZM','PFE','MRNA')) %>%
+    ggplot(aes(x = date, y = adjusted, color = symbol)) + 
+    geom_line()+
+    facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
+    theme_tq() + scale_color_tq() +
+    labs(title = "Line Chart")
+```
+
+```{r,echo=FALSE}
+#end <- ymd('2020/11/30')
+p2 <- before %>% filter(symbol %in% c('AMZN','ZM','PFE','MRNA')) %>%
+    ggplot(aes(x = date, y = close)) +
+    geom_candlestick(aes(open = open, high = high, low = low, close = close),
+                   colour_up = "darkblue",colour_down = "red",
+                   fill_up = "darkblue",fill_down = "red") +
+    facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
+    labs(title = "Candlestic Chart", y = "Closing Price", x = "Time") + 
+    #coord_x_date(xlim = c(end - weeks(6), end)) + 
+    theme_tq() + scale_color_tq()
+```
+
+```{r,echo=FALSE}
+p3 <- before %>% filter(symbol %in% c('AMZN','ZM','MRNA','PFE')) %>%
+    ggplot(aes(x = date, y = volume/1000000, fill = volume/1000000)) +
+    geom_bar(stat = "identity") + 
+     facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
+    labs(title = "Bar Chart of Trading Volume", 
+         y = "Volume / (million)", x = "Time") + 
+    scale_fill_gradient(low = "red", high = "darkblue") +
+    labs(fill = 'Volume / (million)') +
+    theme_tq() + scale_color_tq()
+```
+
+### A. Historical Stock Prices Visualization
+
+```{r, echo=FALSE,  fig.cap='\\label{fig:figs}These line charts above show the trend of the adjusted price of BioNTech, Google, Moderna and Zoom.', fig.height=6,fig.width=8}
+p1
+```
+
+\newpage
+
+Candlestick charts are used to determine possible price movement based on past patterns. Candlesticks are useful when trading as they show four price points (open, close, high, and low) throughout the period of time the trader specifies.
+
+```{r,echo=FALSE,results= 'asis', fig.cap='\\label{fig:figs} These candlestick charts above shows the trend of the adjusted price of BioNTech, Google, Moderna and Zoom.',fig.height=6,fig.width=8}
+p2
+```
+
+### B. Trading Volume Visualization
+
+Trading volume means the number of shares traded during a period. It can potentially give you a sense of the true strength behind a price move. 
+
+The idea is that huge amount of volume or increasing trading volume imply that traders are truly committed to this stock, while small amount of volume or decreasing volume  sometimes can signal a lack of passion in the market. Therefore, it can be used to help confirm the trends of stocks that have already formed. Also, sometimes it can indicate the potential mean reversal.
+
+```{r,echo=FALSE,results= 'asis', fig.cap='\\label{fig:figs} These bar charts above shows the trading volume of BioNTech, Google, Moderna and Zoom.',fig.height=6,fig.width=8}
+p3
+```
+
+\newpage
+
+# Stock Price Forecasting
+
+In order to help us better manage the investment, we can apply the classic time-series forecasting algorithm, ARIMA, to predict the stock prices from 1st July to 1st December of 2020. However, the result of forecasting will only be treated as a reference. Because there are many influencing factors in the stock market and it is not wise to rely on the simple model with many assumptions being violated.
+
+# Portfolio Management 
+
+As mentioned before, based on the professional opinions and suggestions, I select 11 stocks of the technology field and medical field. These stocks were selected because I believe that technology companies that provide online services and vaccine-related companies during the epidemic will embrace an upward trend.  
+
+When managing the portfolio, it is recommended to put all eggs in one basket, which means that invest in only one stock. Also, it is too tired to purchase too many stocks as a beginner in the stock market. Therefore, considering the risk and convenience, we decided to select four stocks from the total 11 stocks. 
+
+### Method 1. Quantitative Trading: 
+
+### CAPM Alpha Ranking & Mean-Variance Portfolio Optimaization
+
+The implementation of the strategy demonstrates that stocks beat the market last month are likely to beat the market again in the subsequent month. This algorithm performs well when the market is smooth. However when the market volatility increases the model fails to capture alpha and it performs poorly. What we learn from this is that market fluctuations decrease the significance level of the linear regression coefficients, especially when we are using daily returns to fit the model.
+
+Alpha shows how well (or badly) a stock has performed in comparison to a benchmark index. Beta indicates how volatile a stock's price has been in comparison to the market as a whole. A high alpha is always good. A high beta may be preferred by an investor in growth stocks but shunned by investors who seek steady returns and lower risk.
+
+Now with the expected excess returns and the covariance matrix ready, we can conduct the Mean-Variance Portfolio Optimization to get the optimal allocation (weight) of each stock so that the Sharpe Ratio of the portfolio is maximized.
+
+Here we will use Guy Yollin’s “effFrontier” and “maxSharpe” functions3, which use the core function of “portfolio.optim” in the “tseries” R package, for the calculations of efficient frontier and maximum Sharpe Ratio.
+
+### Method 2. Mannual Trading
+
+In the certain context, manual trading means selecting and designing the combination of different stocks based on personal knowledge of these companies and personal experience of stock market volatility patterns. I think that is why many people say that trading is art, not science. 
+
+# Performance Analysis
+
+The SP500 returns are used as the market return.
+
+
+
+```{r,echo=FALSE}
+#combination: 30% ZOOM, 20% AMZN, 20% PFE, 30% Moderna  
+# Calculate Monthly Return Rate
+invest_choice <- c('ZM','AMZN','PFE','MRNA')
+returns_monthly_2 <- after %>%
+    filter(symbol %in% invest_choice) %>%
+    group_by(symbol) %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "monthly.return")
+
+initial_position <- 250000 
+wts <- c(0.2,0.3,0.2,0.3)
+growth_monthly_2 <- returns_monthly_2 %>%
+    tq_portfolio(assets_col   = symbol, 
+                 returns_col  = monthly.return, 
+                 weights      = wts, 
+                 col_rename   = "investment.growth",
+                 wealth.index = TRUE) %>%
+    mutate(investment.growth = investment.growth * initial_position)
+```
+
+```{r,echo=FALSE}
+p_manual_each <- returns_monthly_2 %>% 
+    ggplot(aes(x = date, y = monthly.return, color = symbol)) + 
+    geom_line() +
+    theme_tq() + scale_color_tq() +
+    labs(title = "Movement of Monthly Return Rate",
+         subtitle = "From J2020-07-01 to 2020-12-01",
+         x = "Date",y="Monthly Return Rate")
+
+p_manual_total <- growth_monthly_2 %>%
+    ggplot(aes(x = date, y = investment.growth)) +
+    geom_line(size = 2, color = palette_light()[[5]]) +
+    labs(title = "Investment Portfolio Performance",
+         subtitle = "30% ZOOM,  30% AMZN, 20% PFE, 20% Moderna",
+         x = "Time", y = "Portfolio Value") +
+    #geom_smooth(method = "loess") +
+    theme_tq() + scale_color_tq() +
+    scale_y_continuous(labels = scales::dollar)
+```
+
+```{r,eval=FALSE}
+grid.arrange(p_quant_total, p_manual_total,p_quant_each, p_manual_each,ncol = 2)
+```
+
+```{r,eval=FALSE}
+Ra_2 <- after %>% 
+    filter(symbol %in% invest_choice) %>%
+    group_by(symbol) %>%
+    tq_transmute(select = adjusted, 
+               mutate_fun = periodReturn, 
+               period     = "monthly", 
+               col_rename = "Ra")
+
+Rb_2 <- Baseline_2 %>%
+    filter(date >= '2020-07-01' & date <= '2020-12-01') %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "Rb")
+
+RaRb_2 <- left_join(Ra, Rb, by = c("date" = "date"))
+
+RaRb_capm_2 <- RaRb_2 %>%
+    tq_performance(Ra = Ra, 
+                   Rb = Rb, 
+                   performance_fun = table.CAPM)
+
+RaRb_capm_2 %>% 
+    select(symbol, Alpha, Beta) %>% 
+    kable() %>%
+    kable_classic(full_width = F, html_font = "Cambria") %>%
+    footnote(general = "The Alpha and Beta for manual trading portfolio.",
+           general_title = "Table 1: ")
+```
+
+
+# Shiny Application Website
+
+[ShinyApp]()
+
+# Future Work
+
+# Reference
+
+
+
+\newpage
+
+# Appendix
+
+All the code and output:
+
+1. import the data
+
+```{r,eval=FALSE}
+stock_choice <- c('FB','AAPL','GOOG','AMZN','NFLX',
+                  'ZM','AMD','NVDA','PFE','BNTX','MRNA')
+data <- tq_get(stock_choice, get = 'stock.prices',
+               from = '2019-01-01',to = "2020-12-01")
+#data$symbol %>% unique()
+```
+
+```{r}
+# Change into English
+Sys.setlocale("LC_TIME", "English")
+```
+
+2. separate the data
+```{r}
+#historical data
+before <- data %>% filter(date <= '2020-06-30')
+#validation_data
+after <- data %>% filter(date >= '2020-07-01')
+```
+
+3. For convience, we save the data for shiny app. 
+```{r,eval = FALSE}
+write.csv(data,'all_stock_data.csv')
+write.csv(NASDAQ_data,'NASDAQ.csv')
+write.csv(SP500_data,'SP500.CSV')
+# use as.Date to transform the 'date' column when import the data from csv
+#show <- read.csv('FB_Stock_Price.csv')
+#show$date <- as.Date(show$date)
+```
+
+4. EDA
+```{r,eval=FALSE}
+p1 <- before %>% filter(symbol %in% c('GOOG','ZM','BNTX','MRNA')) %>%
+    ggplot(aes(x = date, y = adjusted, color = symbol)) + 
+    geom_line()+
+    facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
+    theme_tq() + scale_color_tq() +
+    labs(title = "Line Chart")
+```
+
+```{r,eval=FALSE}
+#end <- ymd('2020/11/30')
+p2 <- before %>% filter(symbol %in% c('GOOG','ZM','BNTX','MRNA')) %>%
+    ggplot(aes(x = date, y = close)) +
+    geom_candlestick(aes(open = open, high = high, low = low, close = close),
+                   colour_up = "darkblue",colour_down = "red",
+                   fill_up = "darkblue",fill_down = "red") +
+    facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
+    labs(title = "Candlestic Chart", y = "Closing Price", x = "Time") + 
+    #coord_x_date(xlim = c(end - weeks(6), end)) + 
+    theme_tq() + scale_color_tq()
+```
+
+```{r,eval=FALSE}
+p3 <- before %>% filter(symbol %in% c('GOOG','ZM','BNTX','MRNA')) %>%
+    ggplot(aes(x = date, y = volume/1000000, fill = volume/1000000)) +
+    geom_bar(stat = "identity") + 
+     facet_wrap(~ symbol, ncol = 2, scales = "free_y") +
+    labs(title = "Bar Chart of Trading Volume", 
+         y = "Volume / (million)", x = "Time") + 
+    scale_fill_gradient(low = "red", high = "darkblue") +
+    theme(legend.title =  "volume / (million)") +
+    theme_tq() + scale_color_tq()
+```
+
+
+5. Forecasting
+
+
+6.Portfolio Management
+```{r,eval = FALSE}
+# try another invest rate combination: 30% MSFT, 40% BIDU, 30% NTES
+initial_position <- 250000 
+wts <- c(0.3,0.4,0.3)
+portfolio_growth_monthly_3 <- stock_returns_monthly %>%
+    tq_portfolio(assets_col   = symbol, 
+                 returns_col  = monthly.return, 
+                 weights      = wts, 
+                 col_rename   = "investment.growth",
+                 wealth.index = TRUE) %>%
+    mutate(investment.growth = investment.growth * initial_position)
+portfolio_growth_monthly_3 %>%
+    ggplot(aes(x = date, y = investment.growth)) +
+    geom_line(size = 2, color = palette_light()[[5]]) +
+    labs(title = "Portfolio Performance 1",
+         subtitle = "30% MSFT,40% BIDU,30% NTES",
+         x = "", y = "Portfolio Value") +
+    geom_smooth(method = "loess") +
+    theme_tq() +
+    scale_color_tq() +
+    scale_y_continuous(labels = scales::dollar)
+```
+
+7. Performance Analysis
+```{r,eval = FALSE}
+library(kableExtra)
+Baseline_1 <- "XLK" %>%
+    tq_get(get  = "stock.prices",
+           from = '2020-01-01',to = "2020-12-01") 
+
+Baseline_2 <- 'IVE' %>%
+    tq_get(get  = "stock.prices",
+           from = '2020-01-01',to = "2020-12-01")
+
+write.csv(Baseline_1,'XLK.csv')
+write.csv(Baseline_2,'IVE.csv')
+```
+
+```{r,eval = FALSE}
+# CAPM Alpha Ranking Model
+Ra <- data %>% 
+    filter(date >= '2020-04-01' & date <='2020-07-01') %>%
+    group_by(symbol) %>%
+    tq_transmute(select = adjusted, 
+               mutate_fun = periodReturn, 
+               period     = "monthly", 
+               col_rename = "Ra")
+
+Rb <- Baseline_2 %>%
+    filter(date >= '2020-04-01' & date <= '2020-07-01') %>%
+    tq_transmute(select     = adjusted, 
+                 mutate_fun = periodReturn, 
+                 period     = "monthly", 
+                 col_rename = "Rb")
+
+RaRb <- left_join(Ra, Rb, by = c("date" = "date"))
+
+RaRb_capm <- RaRb %>%
+    tq_performance(Ra = Ra, 
+                   Rb = Rb, 
+                   performance_fun = table.CAPM)
+
+good <- RaRb_capm[rev(order(RaRb_capm$Alpha))[1:11],]
+good[,c(1,3,5)] %>%
+    kable() %>%
+    kable_classic(full_width = F, html_font = "Cambria") %>%
+    footnote(general = "The table.",
+           general_title = "Table 1: ")
+```
+
